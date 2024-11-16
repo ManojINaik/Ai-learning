@@ -1,14 +1,16 @@
-import axios from 'axios';
+import OpenAI from "openai";
+
+const client = new OpenAI({
+  apiKey: import.meta.env.VITE_GLHF_API_KEY,
+  baseURL: "https://glhf.chat/api/openai/v1",
+  dangerouslyAllowBrowser: true, // Required for browser usage
+});
 
 export interface Question {
   id: string;
-  question: string;
+  text: string;
   options: string[];
   correctAnswer: string;
-  explanation: string;
-  difficulty: 'beginner' | 'intermediate' | 'advanced';
-  domain: string;
-  topic: string;
 }
 
 export interface AssessmentResult {
@@ -16,290 +18,168 @@ export interface AssessmentResult {
   totalQuestions: number;
   correctAnswers: number;
   incorrectAnswers: number;
-  detailedFeedback: string;
-  recommendedTopics: string[];
-  strengthAreas: string[];
-  improvementAreas: string[];
+  feedback: string;
+  strengths: string[];
+  weaknesses: string[];
 }
 
-const MAX_RETRIES = 5; // Increased retries
-const RETRY_DELAY = 2000; // Increased initial delay to 2 seconds
-const TIMEOUT = 60000; // Increased to 60 seconds
-const API_KEY = 'glhf_18e74141e8dbbf0609d964a189fc33b0';
-const API_URL = 'https://glhf.chat/api/openai/v1/chat/completions';
+const generateSystemPrompt = (domain: string): string => {
+  return `Generate 5 multiple-choice questions to test knowledge in ${domain}.
+Each question must:
+1. Be relevant to ${domain}
+2. Have exactly 4 options labeled as A, B, C, D
+3. Include one correct answer
+4. Be challenging but fair
 
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-const topics: Record<string, string[]> = {
-  'Web Development': ['React', 'JavaScript', 'HTML/CSS', 'State Management', 'API Integration', 'Performance Optimization', 'Security', 'Testing', 'Frameworks', 'Build Tools'],
-  'Machine Learning': ['Neural Networks', 'Deep Learning', 'Natural Language Processing', 'Computer Vision', 'Reinforcement Learning', 'Model Optimization', 'Feature Engineering', 'Model Evaluation', 'Data Preprocessing', 'Model Deployment'],
-  'Data Structures': ['Arrays', 'Trees', 'Graphs', 'Sorting', 'Searching', 'Dynamic Programming', 'Hashing', 'Heaps', 'Linked Lists', 'Stacks and Queues'],
-  'DevOps': ['Containers', 'CI/CD', 'Infrastructure', 'Monitoring', 'Security', 'Scalability', 'Networking', 'Cloud Computing', 'Serverless Architecture']
-};
-
-const generatePrompt = (domain: string, difficulty: string, count: number) => {
-  const domainTopics = topics[domain as keyof typeof topics] || [];
-  
-  return `Generate ${count} multiple-choice questions for a ${difficulty} level assessment in ${domain}.
-
-Requirements:
-1. Questions should test practical knowledge and understanding
-2. Each question should have exactly 4 options
-3. Include a clear explanation for the correct answer
-4. Cover different topics from: ${domainTopics.join(', ')}
-5. Return response in this exact JSON format:
-{
-  "questions": [
-    {
-      "question": "question text",
-      "options": ["option1", "option2", "option3", "option4"],
-      "correctAnswer": "exact text of correct option",
-      "explanation": "detailed explanation",
-      "topic": "specific topic from the list"
-    }
-  ]
-}`;
-};
-
-export const generateQuestions = async (domain: string, difficulty: string = 'intermediate', count: number = 10): Promise<Question[]> => {
-  let retries = 0;
-  let lastError: Error | null = null;
-
-  while (retries < MAX_RETRIES) {
-    try {
-      console.log(`Attempt ${retries + 1} to generate questions...`);
-      
-      const response = await axios.post(
-        API_URL,
-        {
-          model: "hf:xingyaoww/Qwen2.5-Coder-32B-Instruct-AWQ-128k",
-          messages: [
-            {
-              role: "system",
-              content: "You are an expert in creating technical assessment questions. Generate questions that test practical knowledge and understanding."
-            },
-            {
-              role: "user",
-              content: generatePrompt(domain, difficulty, count)
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 3000
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${API_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          timeout: TIMEOUT
-        }
-      );
-
-      const content = response.data.choices[0]?.message?.content;
-      if (!content) {
-        throw new Error('Empty response from API');
-      }
-
-      const parsedResponse = JSON.parse(content);
-      
-      if (!parsedResponse.questions || !Array.isArray(parsedResponse.questions)) {
-        throw new Error('Invalid response format from API');
-      }
-
-      const validQuestions = parsedResponse.questions.filter((q: any) => 
-        q.question && 
-        Array.isArray(q.options) && 
-        q.options.length === 4 &&
-        q.correctAnswer && 
-        q.explanation &&
-        q.topic
-      );
-
-      if (validQuestions.length < count * 0.8) {
-        throw new Error('Insufficient valid questions generated');
-      }
-
-      return validQuestions.map((q: any, index: number) => ({
-        ...q,
-        id: `${domain.toLowerCase()}-${index + 1}`,
-        domain,
-        difficulty: difficulty
-      }));
-
-    } catch (error) {
-      console.error(`Attempt ${retries + 1} failed:`, error);
-      lastError = error as Error;
-      retries++;
-      
-      if (retries < MAX_RETRIES) {
-        const delay = RETRY_DELAY * Math.pow(2, retries - 1); // Exponential backoff
-        console.log(`Retrying in ${delay/1000} seconds...`);
-        await sleep(delay);
-      }
-    }
+Respond with a JSON array of questions in this exact format:
+[
+  {
+    "text": "Question text here?",
+    "options": ["A) First option", "B) Second option", "C) Third option", "D) Fourth option"],
+    "correctAnswer": "A"
   }
+]
 
-  throw new Error(
-    `Failed to generate questions after ${MAX_RETRIES} attempts. ` +
-    `Last error: ${lastError?.message || 'Unknown error'}. ` +
-    'Please try again later.'
-  );
+Important:
+- Use plain JSON without any markdown formatting or backticks
+- Ensure all strings are in double quotes
+- Each question must follow the exact format above.`;
 };
 
-export const evaluateAnswers = async (questions: Question[], userAnswers: Record<string, string>): Promise<AssessmentResult> => {
+export const generateQuestions = async (domain: string): Promise<Question[]> => {
   try {
-    const correctAnswers = questions.filter(q => userAnswers[q.id] === q.correctAnswer).length;
-    const score = (correctAnswers / questions.length) * 100;
+    const response = await fetch("https://glhf.chat/api/openai/v1/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${import.meta.env.VITE_GLHF_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "hf:xingyaoww/Qwen2.5-Coder-32B-Instruct-AWQ-128k",
+        prompt: generateSystemPrompt(domain),
+        temperature: 0.7,
+        max_tokens: 2000,
+        stream: false,
+      }),
+    });
 
-    // Group questions by topic for analysis
-    const topicResults = questions.reduce((acc, q) => {
-      const isCorrect = userAnswers[q.id] === q.correctAnswer;
-      if (!acc[q.topic]) {
-        acc[q.topic] = { correct: 0, total: 0 };
-      }
-      acc[q.topic].total++;
-      if (isCorrect) acc[q.topic].correct++;
-      return acc;
-    }, {} as Record<string, { correct: number; total: number; }>);
-
-    // Calculate strengths and improvement areas
-    const strengthAreas = Object.entries(topicResults)
-      .filter(([_, stats]) => (stats.correct / stats.total) >= 0.7)
-      .map(([topic]) => topic);
-
-    const improvementAreas = Object.entries(topicResults)
-      .filter(([_, stats]) => (stats.correct / stats.total) < 0.7)
-      .map(([topic]) => topic);
-
-    // Ensure we have at least one area in each category
-    if (strengthAreas.length === 0) {
-      const bestTopic = Object.entries(topicResults)
-        .sort(([, a], [, b]) => (b.correct / b.total) - (a.correct / a.total))[0];
-      if (bestTopic) {
-        strengthAreas.push(bestTopic[0]);
-      }
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ message: "Unknown error" }));
+      console.error("API Error:", errorData);
+      throw new Error(errorData.message || `API error: ${response.status}`);
     }
 
-    if (improvementAreas.length === 0) {
-      improvementAreas.push(questions[0].topic);
+    const data = await response.json();
+    console.log("Raw API Response:", data);
+    
+    const aiResponse = data.choices?.[0]?.text || data.generated_text || data[0]?.generated_text;
+    console.log("AI Response before cleaning:", aiResponse);
+
+    if (!aiResponse) {
+      throw new Error("No response content from AI");
     }
+
+    // Extract the JSON array from the response
+    const jsonMatch = aiResponse.match(/\[\s*\{[\s\S]*\}\s*\]/);
+    if (!jsonMatch) {
+      throw new Error("Could not find valid JSON array in response");
+    }
+
+    const cleanedResponse = jsonMatch[0]
+      .replace(/\\n/g, "") // Remove escaped newlines
+      .replace(/\\"/g, '"') // Fix escaped quotes
+      .trim();
+
+    console.log("Cleaned Response:", cleanedResponse);
 
     try {
-      // Try to get AI-generated feedback
-      const response = await axios.post(
-        API_URL,
-        {
-          model: "hf:mistralai/Mistral-7B-Instruct-v0.3",
-          messages: [
-            {
-              role: "system",
-              content: "You are an expert in evaluating technical assessments and providing constructive feedback. Always respond with valid JSON."
-            },
-            {
-              role: "user",
-              content: `
-                Analyze these assessment results for ${questions[0].domain}:
-                Score: ${score}%
-                Questions: ${questions.length}
-                Correct: ${correctAnswers}
-                
-                Topic Performance:
-                ${Object.entries(topicResults)
-                  .map(([topic, stats]) => 
-                    `${topic}: ${stats.correct}/${stats.total} correct (${Math.round((stats.correct/stats.total) * 100)}%)`
-                  )
-                  .join('\n')}
-                
-                Provide a JSON response with:
-                1. Constructive feedback on performance
-                2. Recommended next topics to study
-                3. Areas of strength
-                4. Areas needing improvement
-              `
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 1000
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${API_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          timeout: TIMEOUT
-        }
-      );
+      const parsedQuestions: any[] = JSON.parse(cleanedResponse);
+      console.log("Parsed Questions:", parsedQuestions);
 
-      const content = response.data.choices[0]?.message?.content;
-      if (!content) {
-        throw new Error('Empty response from API');
+      if (!Array.isArray(parsedQuestions)) {
+        throw new Error("Parsed AI response is not an array");
       }
 
-      const analysis = JSON.parse(content);
-      
-      // Validate and ensure all required fields are present
-      const result: AssessmentResult = {
-        score,
-        totalQuestions: questions.length,
-        correctAnswers,
-        incorrectAnswers: questions.length - correctAnswers,
-        detailedFeedback: analysis.detailedFeedback || generateFeedback(score, strengthAreas, improvementAreas, questions[0].domain),
-        recommendedTopics: analysis.recommendedTopics || generateRecommendedTopics(questions, strengthAreas, improvementAreas),
-        strengthAreas: analysis.strengthAreas || strengthAreas,
-        improvementAreas: analysis.improvementAreas || improvementAreas
-      };
+      return parsedQuestions.map((q, index) => {
+        // Validate and clean options format
+        const cleanOptions = q.options.map(opt => {
+          if (!opt.startsWith('A)') && !opt.startsWith('B)') && 
+              !opt.startsWith('C)') && !opt.startsWith('D)')) {
+            throw new Error(`Invalid option format at question ${index + 1}. Options must start with A), B), C), or D)`);
+          }
+          return opt.trim();
+        });
 
-      return result;
-
-    } catch (aiError) {
-      // Fallback to generated feedback if AI fails
-      console.log('Using fallback feedback generation due to API failure:', aiError);
-      
-      return {
-        score,
-        totalQuestions: questions.length,
-        correctAnswers,
-        incorrectAnswers: questions.length - correctAnswers,
-        detailedFeedback: generateFeedback(score, strengthAreas, improvementAreas, questions[0].domain),
-        recommendedTopics: generateRecommendedTopics(questions, strengthAreas, improvementAreas),
-        strengthAreas,
-        improvementAreas
-      };
+        if (
+          typeof q.text === "string" &&
+          Array.isArray(q.options) &&
+          q.options.length === 4 &&
+          typeof q.correctAnswer === "string" &&
+          ["A", "B", "C", "D"].includes(q.correctAnswer)
+        ) {
+          return {
+            id: `q${index + 1}`,
+            text: q.text.trim(),
+            options: cleanOptions,
+            correctAnswer: q.correctAnswer,
+          };
+        } else {
+          console.error("Invalid question format:", q);
+          throw new Error(
+            `Invalid question format at index ${index}. Expected text, 4 options, and correctAnswer A/B/C/D`
+          );
+        }
+      });
+    } catch (parseError) {
+      console.error("JSON Parse Error:", parseError);
+      console.error("Failed to parse response:", cleanedResponse);
+      throw new Error(`Failed to parse AI response: ${parseError.message}`);
     }
   } catch (error) {
-    console.error('Error evaluating answers:', error);
-    throw new Error('Failed to evaluate assessment. Please try again.');
+    console.error("Error generating questions:", error);
+    throw error;
   }
 };
 
-// Helper function to generate feedback
-const generateFeedback = (
-  score: number,
-  strengthAreas: string[],
-  improvementAreas: string[],
-  domain: string
-): string => {
-  if (score >= 80) {
-    return `Excellent performance in ${domain}! You demonstrated strong understanding in ${strengthAreas.join(', ')}. To further advance your skills, consider exploring more advanced topics in ${improvementAreas.length > 0 ? improvementAreas.join(', ') : 'your strong areas'}.`;
-  } else if (score >= 60) {
-    return `Good progress in ${domain}. You show proficiency in ${strengthAreas.join(', ')}. Focus on strengthening your knowledge in ${improvementAreas.join(', ')} to improve further.`;
-  } else {
-    return `You're on the right track with ${domain}. ${strengthAreas.length > 0 ? `You're familiar with ${strengthAreas.join(', ')}.` : ''} We recommend focusing on the fundamentals of ${improvementAreas.join(', ')} to build a stronger foundation.`;
-  }
-};
-
-// Helper function to generate recommended topics
-const generateRecommendedTopics = (
+export const evaluateAnswers = (
   questions: Question[],
-  strengthAreas: string[],
-  improvementAreas: string[]
-): string[] => {
-  const recommendedTopics = [
-    ...improvementAreas,
-    ...questions
-      .filter(q => q.difficulty === 'advanced' && !strengthAreas.includes(q.topic))
-      .map(q => q.topic)
-  ].filter((topic, index, self) => self.indexOf(topic) === index);
+  userAnswers: Record<string, string>
+): AssessmentResult => {
+  let correctAnswers = 0;
+  const strengths: string[] = [];
+  const weaknesses: string[] = [];
 
-  return recommendedTopics.slice(0, 5); // Limit to top 5 recommendations
+  questions.forEach((question) => {
+    const userAnswer = userAnswers[question.id];
+    if (userAnswer === question.correctAnswer) {
+      correctAnswers++;
+      strengths.push(question.text);
+    } else {
+      weaknesses.push(question.text);
+    }
+  });
+
+  const score = (correctAnswers / questions.length) * 100;
+  const incorrectAnswers = questions.length - correctAnswers;
+
+  let feedback = "";
+  if (score >= 90) {
+    feedback = "Excellent! You have a strong understanding of this domain.";
+  } else if (score >= 70) {
+    feedback = "Good job! You have a solid grasp of the basics with room for improvement.";
+  } else if (score >= 50) {
+    feedback = "You're on the right track, but there's room for improvement.";
+  } else {
+    feedback = "Consider reviewing the fundamentals of this domain.";
+  }
+
+  return {
+    score,
+    totalQuestions: questions.length,
+    correctAnswers,
+    incorrectAnswers,
+    feedback,
+    strengths,
+    weaknesses,
+  };
 };

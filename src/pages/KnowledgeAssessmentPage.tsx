@@ -1,29 +1,71 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '../config/firebase';
 import { Question, AssessmentResult, generateQuestions, evaluateAnswers } from '../services/knowledgeAssessmentService';
 import { Brain, CheckCircle, XCircle, AlertCircle, ArrowRight, Book } from 'lucide-react';
 
-const domains = [
-  'Web Development',
-  'Mobile Development',
-  'Machine Learning',
-  'Data Science',
-  'Cloud Computing',
-  'DevOps',
-  'Cybersecurity',
-  'Blockchain',
-  'UI/UX Design',
-  'Software Architecture'
-];
+interface Domain {
+  id: string;
+  name: string;
+  description: string;
+}
 
 const KnowledgeAssessmentPage: React.FC = () => {
+  const [domains, setDomains] = useState<Domain[]>([]);
   const [selectedDomain, setSelectedDomain] = useState<string>('');
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [userAnswers, setUserAnswers] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AssessmentResult | null>(null);
   const [stage, setStage] = useState<'domain' | 'assessment' | 'result'>('domain');
+
+  useEffect(() => {
+    const fetchDomains = async () => {
+      try {
+        const domainsCollection = collection(db, 'domains');
+        const domainsSnapshot = await getDocs(domainsCollection);
+        const domainsList = domainsSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as Domain));
+        setDomains(domainsList);
+        setLoading(false);
+      } catch (error) {
+        console.error('Error fetching domains:', error);
+        setLoading(false);
+      }
+    };
+
+    fetchDomains();
+  }, []);
+
+  const handleDomainSelect = async (domainId: string) => {
+    try {
+      setLoading(true);
+      setSelectedDomain(domainId);
+      
+      // Find the selected domain name
+      const selectedDomainData = domains.find(d => d.id === domainId);
+      if (!selectedDomainData) {
+        throw new Error('Domain not found');
+      }
+
+      // Generate questions for the selected domain
+      const generatedQuestions = await generateQuestions(selectedDomainData.name);
+      setQuestions(generatedQuestions);
+      setStage('assessment');
+      setCurrentQuestionIndex(0);
+      setUserAnswers({});
+      setResult(null);
+    } catch (error) {
+      console.error('Error starting assessment:', error);
+      setError('Failed to start assessment. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const startAssessment = async () => {
     try {
@@ -39,10 +81,11 @@ const KnowledgeAssessmentPage: React.FC = () => {
     }
   };
 
-  const handleAnswer = (answer: string) => {
+  const handleAnswer = (option: string, index: number) => {
+    const answerLetter = String.fromCharCode(65 + index); // Convert index to 'A', 'B', 'C', 'D'
     setUserAnswers(prev => ({
       ...prev,
-      [questions[currentQuestionIndex].id]: answer
+      [questions[currentQuestionIndex].id]: answerLetter
     }));
   };
 
@@ -79,8 +122,8 @@ const KnowledgeAssessmentPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
       </div>
     );
   }
@@ -106,47 +149,37 @@ const KnowledgeAssessmentPage: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {domains.map(domain => (
+            {domains.map((domain) => (
               <button
-                key={domain}
-                onClick={() => setSelectedDomain(domain)}
+                key={domain.id}
+                onClick={() => handleDomainSelect(domain.id)}
                 className={`p-4 rounded-lg border transition-all ${
-                  selectedDomain === domain
+                  selectedDomain === domain.id
                     ? 'border-indigo-500 bg-indigo-50'
                     : 'border-gray-200 hover:border-indigo-200 hover:bg-gray-50'
                 }`}
               >
                 <div className="flex items-center space-x-3">
                   <Brain className={`w-5 h-5 ${
-                    selectedDomain === domain ? 'text-indigo-500' : 'text-gray-400'
+                    selectedDomain === domain.id ? 'text-indigo-500' : 'text-gray-400'
                   }`} />
-                  <span className={selectedDomain === domain ? 'text-indigo-700' : 'text-gray-700'}>
-                    {domain}
+                  <span className={selectedDomain === domain.id ? 'text-indigo-700' : 'text-gray-700'}>
+                    {domain.name}
                   </span>
                 </div>
               </button>
             ))}
           </div>
 
-          <div className="mt-8 flex justify-center">
-            <button
-              onClick={startAssessment}
-              disabled={!selectedDomain}
-              className={`px-6 py-2 rounded-lg flex items-center space-x-2 ${
-                selectedDomain
-                  ? 'bg-indigo-600 text-white hover:bg-indigo-700'
-                  : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-              }`}
-            >
-              <span>Start Assessment</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
+          {domains.length === 0 && (
+            <p className="text-gray-600 text-center">No domains available. Please contact an administrator.</p>
+          )}
         </div>
       )}
 
       {stage === 'assessment' && questions[currentQuestionIndex] && (
         <div>
+          {console.log('Current question:', questions[currentQuestionIndex])}
           <div className="mb-8">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-semibold text-gray-900">
@@ -163,21 +196,21 @@ const KnowledgeAssessmentPage: React.FC = () => {
           </div>
 
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-            <p className="text-lg text-gray-900 mb-6">{questions[currentQuestionIndex].question}</p>
+            <p className="text-lg text-gray-900 mb-6">{questions[currentQuestionIndex].text}</p>
             <div className="space-y-3">
               {questions[currentQuestionIndex].options.map((option, index) => (
                 <button
                   key={index}
-                  onClick={() => handleAnswer(option)}
+                  onClick={() => handleAnswer(option, index)}
                   className={`w-full text-left p-4 rounded-lg border transition-all ${
-                    userAnswers[questions[currentQuestionIndex].id] === option
+                    userAnswers[questions[currentQuestionIndex].id] === String.fromCharCode(65 + index)
                       ? 'border-indigo-500 bg-indigo-50'
                       : 'border-gray-200 hover:border-indigo-200 hover:bg-gray-50'
                   }`}
                 >
                   <div className="flex items-center space-x-3">
                     <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
-                      userAnswers[questions[currentQuestionIndex].id] === option
+                      userAnswers[questions[currentQuestionIndex].id] === String.fromCharCode(65 + index)
                         ? 'bg-indigo-500 text-white'
                         : 'bg-gray-100'
                     }`}>

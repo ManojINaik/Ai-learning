@@ -1,4 +1,5 @@
 import axios, { AxiosError } from 'axios';
+import { saveAssessmentResult } from './firebase.service';
 
 const BASE_URL = 'https://glhf.chat/api/openai/v1';
 const GLHF_API_KEY = 'glhf_18e74141e8dbbf0609d964a189fc33b0';
@@ -195,25 +196,25 @@ Return ONLY a JSON object with these exact fields:
 // Function to save score to database
 export async function saveScore(userId: string, questionId: string, score: number, language: string) {
   try {
-    // Replace this with your actual database saving logic
-    // For now, we'll just log it
-    console.log('Saving score:', {
+    const result = {
+      questionId,
+      score,
+      language,
+      completedAt: new Date(),
+      answers: {},  // We'll add this for compatibility with our AssessmentResult type
+      assessmentId: questionId // Using questionId as assessmentId for now
+    };
+
+    // Save to Firebase using our service
+    await saveAssessmentResult(userId, result);
+    
+    console.log('Score saved successfully:', {
       userId,
       questionId,
       score,
       language,
       timestamp: new Date().toISOString()
     });
-
-    // Here you would typically make an API call to your backend
-    // Example:
-    // await axios.post('/api/scores', {
-    //   userId,
-    //   questionId,
-    //   score,
-    //   language,
-    //   timestamp: new Date().toISOString()
-    // });
 
   } catch (error) {
     console.error('Error saving score:', error);

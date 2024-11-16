@@ -20,6 +20,7 @@
     "firebase-admin": "^12.0.0",
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.344.0",
+    "next": "^15.0.3",
     "openai": "^4.72.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

@@ -7,6 +7,7 @@ import AdminContent from '../../components/admin/AdminContent';
 import AdminAnalytics from '../../components/admin/AdminAnalytics';
 import AdminSettings from '../../components/admin/AdminSettings';
 import AdminAssessments from '../../components/admin/AdminAssessments';
+import AssessmentManagement from '../../components/admin/AssessmentManagement';
 
 const AdminDashboard = () => {
   return (
@@ -19,6 +20,7 @@ const AdminDashboard = () => {
             <Route path="/users" element={<AdminUsers />} />
             <Route path="/content" element={<AdminContent />} />
             <Route path="/assessments" element={<AdminAssessments />} />
+            <Route path="/assessments/management" element={<AssessmentManagement />} />
             <Route path="/settings" element={<AdminSettings />} />
           </Routes>
         </main>

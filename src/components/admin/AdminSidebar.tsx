@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Users, BookOpen, BarChart2, Settings, Shield, LogOut, Brain } from 'lucide-react';
+import { Users, BookOpen, BarChart2, Settings, Shield, LogOut, Brain, FileText } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 const AdminSidebar = () => {
@@ -10,8 +10,8 @@ const AdminSidebar = () => {
   const navItems = [
     { path: '/admin', icon: BarChart2, label: 'Dashboard', exact: true },
     { path: '/admin/users', icon: Users, label: 'Users' },
-    { path: '/admin/content', icon: BookOpen, label: 'Content' },
-    { path: '/admin/assessments', icon: Brain, label: 'Assessments' },
+    { path: '/admin/content', icon: FileText, label: 'Content' },
+    { path: '/admin/assessments/management', icon: Brain, label: 'Assessment Management' },
     { path: '/admin/settings', icon: Settings, label: 'Settings' }
   ];
 
