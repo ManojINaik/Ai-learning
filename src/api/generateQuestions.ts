@@ -1,11 +1,18 @@
 import OpenAI from 'openai';
 import { NextApiRequest, NextApiResponse } from 'next';
 
-const GLHF_API_KEY = 'glhf_18e74141e8dbbf0609d964a189fc33b0';
+// Initialize OpenAI with environment variables
+const GLHF_API_KEY = import.meta.env.VITE_GLHF_API_KEY;
+const GLHF_API_URL = import.meta.env.VITE_GLHF_API_URL || 'https://glhf.chat/api/openai/v1';
+
+// Validate required environment variables
+if (!GLHF_API_KEY) {
+  throw new Error('VITE_GLHF_API_KEY is not set in environment variables');
+}
 
 const openai = new OpenAI({
   apiKey: GLHF_API_KEY,
-  baseURL: "https://glhf.chat/api/openai/v1",
+  baseURL: GLHF_API_URL,
 });
 
 const generateSystemPrompt = (domain: string) => {

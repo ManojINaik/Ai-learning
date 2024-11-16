@@ -43,10 +43,15 @@ interface SkillAssessmentInput {
   focusAreas: string[];
 }
 
-const GLHF_API_KEY = "glhf_18e74141e8dbbf0609d964a189fc33b0";
-const BASE_URL = "https://glhf.chat/api/openai/v1";
+const GLHF_API_KEY = import.meta.env.VITE_GLHF_API_KEY;
+const BASE_URL = import.meta.env.VITE_GLHF_API_URL || "https://glhf.chat/api/openai/v1";
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000; // 1 second
+
+// Validate required environment variables
+if (!GLHF_API_KEY) {
+  throw new Error('VITE_GLHF_API_KEY is not set in environment variables');
+}
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 

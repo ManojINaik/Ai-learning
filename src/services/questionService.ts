@@ -1,24 +1,14 @@
 import axios, { AxiosError } from 'axios';
 import { saveAssessmentResult } from './firebase.service';
 
-const BASE_URL = 'https://glhf.chat/api/openai/v1';
-const GLHF_API_KEY = 'glhf_18e74141e8dbbf0609d964a189fc33b0';
+const BASE_URL = import.meta.env.VITE_GLHF_API_URL || 'https://glhf.chat/api/openai/v1';
+const GLHF_API_KEY = import.meta.env.VITE_GLHF_API_KEY;
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000; // 1 second
 
-export interface Question {
-  id: string;
-  question: string;
-  expectedOutput: string;
-  difficulty: string;
-  category: string;
-  hints?: string[];
-}
-
-export interface SubmissionResult {
-  correct: boolean;
-  score: number;
-  feedback: string;
+// Validate required environment variables
+if (!GLHF_API_KEY) {
+  throw new Error('VITE_GLHF_API_KEY is not set in environment variables');
 }
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -61,6 +51,21 @@ async function makeAPIRequest(payload: any, retryCount = 0): Promise<any> {
     }
     throw error;
   }
+}
+
+export interface Question {
+  id: string;
+  question: string;
+  expectedOutput: string;
+  difficulty: string;
+  category: string;
+  hints?: string[];
+}
+
+export interface SubmissionResult {
+  correct: boolean;
+  score: number;
+  feedback: string;
 }
 
 export async function generateQuestion(language: string, skillLevel: string, focusAreas: string[]): Promise<Question> {
