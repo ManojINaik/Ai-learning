@@ -20,14 +20,14 @@ An intelligent, AI-powered learning assessment platform that adapts to your know
 ## 📸 Screenshots
 
 <div align="center">
-  <img src="docs/images/dashboard.png" alt="Dashboard" width="400"/>
+  <img src="docs/images/ProgressAnalytics.png" alt="Dashboard" width="400"/>
   <p><em>Dashboard - Track your learning progress</em></p>
   
   <img src="docs/images/assessment.png" alt="Assessment" width="400"/>
   <p><em>Assessment Interface - AI-powered question generation</em></p>
   
-  <img src="docs/images/feedback.png" alt="Feedback" width="400"/>
-  <p><em>Detailed Feedback - Personalized learning insights</em></p>
+  <img src="docs/images/contentLibrary.png" alt="ContentLibrary" width="400"/>
+  <p><em>Content Library - Content Library</em></p>
 </div>
 
 ## ✨ Features
