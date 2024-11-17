@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { loadEnv } from 'vite';
+import path from 'path';
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
@@ -19,7 +20,7 @@ export default defineConfig(({ mode }) => {
       host: true,
       proxy: {
         '/api': {
-          target: 'https://glhf.chat/api/openai/v1',
+          target: 'http://localhost:3000',
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api/, ''),
           headers: {
@@ -27,6 +28,20 @@ export default defineConfig(({ mode }) => {
           }
         }
       }
-    }
+    },
+    build: {
+      target: 'esnext',
+      outDir: 'dist',
+      assetsDir: 'assets',
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            vendor: ['react', 'react-dom'],
+            transformers: ['@xenova/transformers']
+          }
+        }
+      }
+    },
+    publicDir: 'public'
   };
 });

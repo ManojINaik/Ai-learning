@@ -64,6 +64,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
       }
 
+      // Store user email in localStorage
+      if (firebaseUser.email) {
+        localStorage.setItem('userEmail', firebaseUser.email);
+      }
+
       setUser(userData);
       setIsAdmin(role === 'admin');
       return userData;
@@ -125,6 +130,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(null);
       setIsAdmin(false);
       localStorage.removeItem('user');
+      localStorage.removeItem('userEmail');
       sessionStorage.clear();
     } catch (err: any) {
       console.error('Logout error:', err);

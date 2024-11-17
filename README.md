@@ -1,4 +1,6 @@
-# 🎓 Adaptive Learning Assessment Platform
+# Learning Assessment Platform
+
+A comprehensive platform for assessing and improving programming skills through interactive assessments and real-time feedback.
 
 <div align="center">
 
@@ -8,16 +10,41 @@
 [![GitHub forks](https://img.shields.io/github/forks/ManojINaik/Ai-learning)](https://github.com/ManojINaik/Ai-learning/network)
 
 <p align="center">
-  <img src="docs/images/banner.png" alt="Adaptive Learning Platform Banner" width="800"/>
+  <img src="docs/images/banner.png" alt="Learning Assessment Platform Banner" width="800"/>
 </p>
 
-An intelligent, AI-powered learning assessment platform that adapts to your knowledge level and provides personalized feedback for continuous improvement.
+## Features
 
-[Demo](https://github.com/ManojINaik/Ai-learning) • [Report Bug](https://github.com/ManojINaik/Ai-learning/issues) • [Request Feature](https://github.com/ManojINaik/Ai-learning/issues)
+### For Students
+- **Skill Assessment**: Take programming assessments in various languages and domains
+- **Knowledge Testing**: Test theoretical understanding of programming concepts
+- **Real-time Feedback**: Get instant feedback on your code submissions
+- **Progress Tracking**: Monitor your learning progress over time
+- **Personalized Learning Path**: Get recommendations based on your performance
 
-</div>
+### For Teachers
+- **Assessment Creation**: Create custom assessments for students
+- **Performance Monitoring**: Track student progress and identify areas for improvement
+- **Automated Grading**: Automatic evaluation of student submissions
+- **Detailed Analytics**: Access comprehensive reports on student performance
 
-## 📸 Screenshots
+### For Administrators
+- **User Management**: Add, view, and manage users through an intuitive admin dashboard
+- **Domain Management**: Add and remove programming domains and topics
+- **Assessment Management**: Organize and manage all assessments
+- **Admin Assistant**: AI-powered chatbot for quick administrative tasks
+  - View user statistics and performance
+  - Manage domains and users through chat commands
+  - Access assessment results and analytics
+  - Monitor platform usage
+
+### Technical Features
+- **Firebase Integration**: Secure authentication and real-time database
+- **AI-Powered Analysis**: Advanced code analysis and feedback
+- **Responsive Design**: Works seamlessly across devices
+- **Real-time Updates**: Instant updates for assessments and results
+
+## Screenshots
 
 <div align="center">
   <img src="docs/images/ProgressAnalytics.png" alt="Dashboard" width="400"/>
@@ -30,40 +57,7 @@ An intelligent, AI-powered learning assessment platform that adapts to your know
   <p><em>Content Library - Content Library</em></p>
 </div>
 
-## ✨ Features
-
-<div align="center">
-  <table>
-    <tr>
-      <td align="center">🧠 <b>AI-Powered Questions</b></td>
-      <td align="center">📊 <b>Skill Assessment</b></td>
-      <td align="center">🎯 <b>Adaptive Difficulty</b></td>
-    </tr>
-    <tr>
-      <td align="center">📝 <b>Multi-Domain Support</b></td>
-      <td align="center">🔄 <b>Real-time Feedback</b></td>
-      <td align="center">📈 <b>Progress Tracking</b></td>
-    </tr>
-  </table>
-</div>
-
-## 🛠️ Tech Stack
-
-<div align="center">
-  <img src="https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React"/>
-  <img src="https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript"/>
-  <img src="https://img.shields.io/badge/Vite-B73BFE?style=for-the-badge&logo=vite&logoColor=FFD62E" alt="Vite"/>
-  <img src="https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white" alt="Tailwind"/>
-  <img src="https://img.shields.io/badge/Firebase-FFCA28?style=for-the-badge&logo=firebase&logoColor=black" alt="Firebase"/>
-</div>
-
-## 📋 Prerequisites
-
-- Node.js (v16 or higher)
-- npm or yarn
-- GLHF Chat API key
-
-## 🚀 Quick Start
+## Getting Started
 
 1. **Clone the repository**
    ```bash
@@ -78,9 +72,17 @@ An intelligent, AI-powered learning assessment platform that adapts to your know
 
 3. **Set up environment variables**
    ```env
-   # GLHF Chat API Configuration
-   VITE_GLHF_API_KEY=your_glhf_api_key_here
-   VITE_GLHF_API_URL=https://glhf.chat/api/openai/v1
+    VITE_FIREBASE_API_KEY=<your-api-key>
+    VITE_FIREBASE_AUTH_DOMAIN=<your-api-key>
+    VITE_FIREBASE_PROJECT_ID=<your-api-key>
+    VITE_FIREBASE_STORAGE_BUCKET=<your-api-key>
+    VITE_FIREBASE_MESSAGING_SENDER_ID=<your-api-key>
+    VITE_FIREBASE_APP_ID=<your-api-key>
+    VITE_FIREBASE_MEASUREMENT_ID=<your-api-key>
+    
+    # GLHF API Configuration
+    VITE_GLHF_API_KEY=<your-api-key>
+    VITE_GLHF_API_URL=https://glhf.chat/api/openai/v1
    ```
 
 4. **Start development server**
@@ -88,7 +90,35 @@ An intelligent, AI-powered learning assessment platform that adapts to your know
    npm run dev
    ```
 
-## 🏗️ Project Structure
+## Admin Assistant Commands
+
+The Admin Assistant chatbot supports the following commands:
+
+### User Management
+- `show all users` or `list users`: View all users in the system
+- `show statistics`: View platform usage statistics
+- `delete user [email]`: Remove a user from the system
+
+### Domain Management
+- `show domains` or `list domains`: View all available domains
+- `add domain [name]`: Add a new programming domain
+- `add domain [name] [description]`: Add a domain with description
+- `delete domain [name]`: Remove a domain
+
+### Assessment Management
+- `show assessments` or `assessment stats`: View assessment statistics
+- `show results` or `result stats`: View assessment result statistics
+- `show results for [userId]`: View results for a specific user
+
+## Tech Stack
+
+- **Frontend**: React, TypeScript, Tailwind CSS
+- **Backend**: Firebase (Authentication, Firestore)
+- **APIs**: GLHF Chat API for code analysis
+- **State Management**: React Context
+- **UI Components**: Custom components with Tailwind
+
+## Project Structure
 
 ```
 project/
@@ -105,70 +135,24 @@ project/
 └── 📁 public/           # Static assets
 ```
 
-## 🔑 Key Features
-
-<details>
-<summary><b>Knowledge Assessment</b></summary>
-
-- Domain-specific question generation
-- Multiple choice questions
-- Immediate feedback
-- Progress tracking
-</details>
-
-<details>
-<summary><b>Skills Assessment</b></summary>
-
-- Code quality analysis
-- Performance evaluation
-- Security assessment
-- Best practices review
-</details>
-
-<details>
-<summary><b>Learning Resources</b></summary>
-
-- Personalized recommendations
-- Strength/weakness analysis
-- Next-step guidance
-</details>
-
-## 🧪 Testing
-
-```bash
-npm test
-```
-
-## 🔒 Security & Known Issues
-
-- ✅ Environment variables for API keys
-- ✅ Input validation and sanitization
-- ⚠️ Requires stable internet connection
-- ⚠️ Occasional AI response parsing issues
-
-## 🔮 Roadmap
-
-1. 🎯 Advanced AI prompt engineering
-2. 🎯 Enhanced difficulty selection
-3. 🎯 Nuanced assessment feedback
-4. 🎯 Question caching system
-5. 🎯 Improved error recovery
-6. 🎯 User progress tracking
-
-## 🤝 Contributing
+## Contributing
 
 1. Fork the repository
-2. Create feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit changes (`git commit -m 'Add AmazingFeature'`)
-4. Push to branch (`git push origin feature/AmazingFeature`)
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
-## 👤 Author
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Author
 
 **Manoj Naik**
 - GitHub: [@ManojINaik](https://github.com/ManojINaik)
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - GLHF Chat for AI capabilities
 - React and TypeScript communities

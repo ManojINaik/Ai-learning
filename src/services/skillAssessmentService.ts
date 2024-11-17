@@ -1,4 +1,4 @@
-import axios, { AxiosError } from 'axios';
+import axios, { AxiosError, AxiosRequestConfig } from 'axios';
 
 interface SkillAssessmentResult {
   overallScore: number;
@@ -44,54 +44,119 @@ interface SkillAssessmentInput {
 }
 
 const GLHF_API_KEY = import.meta.env.VITE_GLHF_API_KEY;
-const BASE_URL = import.meta.env.VITE_GLHF_API_URL || "https://glhf.chat/api/openai/v1";
-const MAX_RETRIES = 3;
-const RETRY_DELAY = 1000; // 1 second
+const BASE_URL = 'https://glhf.chat/api/openai/v1';
 
-// Validate required environment variables
-if (!GLHF_API_KEY) {
-  throw new Error('VITE_GLHF_API_KEY is not set in environment variables');
-}
+const INITIAL_TIMEOUT = 15000;  // 15 seconds
+const MAX_TIMEOUT = 45000;     // 45 seconds
+const MAX_RETRIES = 4;
+const RETRY_DELAY = 1000;      // 1 second
+
+const axiosInstance = axios.create({
+  baseURL: BASE_URL,
+  timeout: INITIAL_TIMEOUT,
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${GLHF_API_KEY}`
+  },
+  validateStatus: (status) => status < 500 // Only treat 500+ as errors
+});
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-async function makeAPIRequest(payload: any, retryCount = 0): Promise<any> {
+interface APIRequestConfig extends AxiosRequestConfig {
+  retryCount?: number;
+  maxRetries?: number;
+  retryDelay?: number;
+}
+
+async function makeAPIRequest(endpoint: string, payload: any, config: APIRequestConfig = {}): Promise<any> {
+  const retryCount = config.retryCount || 0;
+  const maxRetries = config.maxRetries || MAX_RETRIES;
+  const retryDelay = config.retryDelay || RETRY_DELAY;
+  const currentTimeout = Math.min(INITIAL_TIMEOUT * Math.pow(1.5, retryCount), MAX_TIMEOUT);
+
   try {
-    const response = await axios.post(
-      `${BASE_URL}/chat/completions`,
-      payload,
-      {
-        headers: {
-          'Authorization': `Bearer ${GLHF_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 30000 // 30 second timeout
+    console.log(`Making API request (attempt ${retryCount + 1}/${maxRetries + 1})`);
+    
+    const response = await axiosInstance({
+      method: 'POST',
+      url: endpoint,
+      data: payload,
+      timeout: currentTimeout,
+      ...config
+    });
+
+    // Handle rate limiting
+    if (response.status === 429) {
+      if (retryCount < maxRetries) {
+        const retryAfter = parseInt(response.headers['retry-after']) * 1000 || retryDelay * Math.pow(2, retryCount);
+        console.log(`Rate limited, retrying after ${retryAfter}ms...`);
+        await delay(retryAfter);
+        return makeAPIRequest(endpoint, payload, { ...config, retryCount: retryCount + 1 });
       }
-    );
-    return response.data;
+      throw new Error('Rate limit exceeded. Please try again later.');
+    }
+
+    // Handle successful response
+    if (response.status === 200) {
+      return response.data;
+    }
+
+    throw new Error(response.data?.error?.message || `Request failed with status ${response.status}`);
+
   } catch (error) {
     if (axios.isAxiosError(error)) {
       const axiosError = error as AxiosError;
-      console.error('API request failed:', {
-        status: axiosError.response?.status,
-        data: axiosError.response?.data,
-        message: axiosError.message
-      });
+      
+      // Handle timeouts
+      if (axiosError.code === 'ECONNABORTED' || axiosError.message.includes('timeout')) {
+        if (retryCount < maxRetries) {
+          console.log(`Request timed out after ${currentTimeout}ms, retrying...`);
+          await delay(retryDelay * Math.pow(1.5, retryCount));
+          return makeAPIRequest(endpoint, payload, { ...config, retryCount: retryCount + 1 });
+        }
+        throw new Error('The server is taking too long to respond. Please try again later.');
+      }
 
-      // Check if we should retry
-      if (retryCount < MAX_RETRIES && (
-        axiosError.message.includes('INTERNAL_ERROR') ||
-        axiosError.message.includes('stream error') ||
-        axiosError.code === 'ECONNABORTED' ||
-        axiosError.response?.status === 500 ||
-        axiosError.response?.status === 503
-      )) {
-        console.log(`Retrying request (${retryCount + 1}/${MAX_RETRIES})...`);
-        await delay(RETRY_DELAY * (retryCount + 1)); // Exponential backoff
-        return makeAPIRequest(payload, retryCount + 1);
+      // Handle network errors
+      if (axiosError.code === 'ERR_NETWORK') {
+        if (retryCount < maxRetries) {
+          console.log('Network error, retrying...');
+          await delay(retryDelay * Math.pow(1.5, retryCount));
+          return makeAPIRequest(endpoint, payload, { ...config, retryCount: retryCount + 1 });
+        }
+        throw new Error('Unable to connect to the server. Please check your internet connection.');
+      }
+
+      // Handle HTTP errors
+      if (axiosError.response) {
+        const status = axiosError.response.status;
+        switch (status) {
+          case 401:
+            throw new Error('Authentication failed. Please check your API key.');
+          case 403:
+            throw new Error('Access denied. Please check your permissions.');
+          case 400:
+            throw new Error('Invalid request. Please check your input parameters.');
+          case 404:
+            throw new Error('API endpoint not found. Please check the service URL.');
+          case 500:
+          case 502:
+          case 503:
+          case 504:
+            if (retryCount < maxRetries) {
+              console.log(`Server error (${status}), retrying...`);
+              await delay(retryDelay * Math.pow(2, retryCount));
+              return makeAPIRequest(endpoint, payload, { ...config, retryCount: retryCount + 1 });
+            }
+            throw new Error('The server is experiencing issues. Please try again later.');
+          default:
+            throw new Error(`Request failed with status ${status}`);
+        }
       }
     }
-    throw error;
+    
+    throw new Error('An unexpected error occurred. Please try again.');
   }
 }
 
@@ -152,47 +217,70 @@ Return ONLY a JSON object with these exact fields:
         }
       ],
       temperature: 0.3,
-      max_tokens: 2000
+      max_tokens: 1500,
+      presence_penalty: 0.1,
+      frequency_penalty: 0.1
     };
 
-    const data = await makeAPIRequest(payload);
+    const data = await makeAPIRequest('/chat/completions', payload, {
+      timeout: 30000,
+      maxRetries: 3,
+      retryDelay: 2000
+    });
     
     if (!data?.choices?.[0]?.message?.content) {
-      throw new Error('Invalid API response format');
+      throw new Error('Invalid response format from AI service');
     }
 
     const content = data.choices[0].message.content.trim();
-    const result = JSON.parse(content);
+    let result: SkillAssessmentResult;
+
+    try {
+      result = JSON.parse(content);
+    } catch (parseError) {
+      console.error('Failed to parse AI response:', content);
+      throw new Error('Failed to parse the AI service response');
+    }
 
     // Validate and normalize the result
-    const normalizedResult: SkillAssessmentResult = {
+    return {
       overallScore: Math.max(0, Math.min(10, Number(result.overallScore) || 0)),
       strengths: Array.isArray(result.strengths) ? result.strengths.map(String) : [],
       weaknesses: Array.isArray(result.weaknesses) ? result.weaknesses.map(String) : [],
       recommendations: Array.isArray(result.recommendations) ? result.recommendations.map(String) : [],
       detailedAnalysis: {
-        codeQuality: result.detailedAnalysis?.codeQuality || { score: 0, feedback: [] },
-        bestPractices: result.detailedAnalysis?.bestPractices || { score: 0, feedback: [] },
-        performance: result.detailedAnalysis?.performance || { score: 0, feedback: [] },
-        security: result.detailedAnalysis?.security || { score: 0, feedback: [] }
+        codeQuality: normalizeAnalysis(result.detailedAnalysis?.codeQuality),
+        bestPractices: normalizeAnalysis(result.detailedAnalysis?.bestPractices),
+        performance: normalizeAnalysis(result.detailedAnalysis?.performance),
+        security: normalizeAnalysis(result.detailedAnalysis?.security)
       },
       skillLevel: {
         current: result.skillLevel?.current || skillLevel,
-        next: result.skillLevel?.next || 'advanced',
+        next: result.skillLevel?.next || getNextLevel(skillLevel),
         requirements: Array.isArray(result.skillLevel?.requirements) 
           ? result.skillLevel.requirements.map(String)
           : []
       }
     };
-
-    return normalizedResult;
-  } catch (error: any) {
+  } catch (error) {
     console.error('Code analysis error:', error);
-    if (error.message.includes('INTERNAL_ERROR') || error.message.includes('stream error')) {
-      throw new Error('The AI service is temporarily unavailable. Please try again in a few moments.');
-    }
-    throw error;
+    throw error instanceof Error ? error : new Error('Failed to analyze code');
   }
+}
+
+function normalizeAnalysis(analysis: any) {
+  return {
+    score: Math.max(0, Math.min(10, Number(analysis?.score) || 0)),
+    feedback: Array.isArray(analysis?.feedback) ? analysis.feedback.map(String) : []
+  };
+}
+
+function getNextLevel(currentLevel: string): string {
+  const levels = ['beginner', 'intermediate', 'advanced', 'expert'];
+  const currentIndex = levels.indexOf(currentLevel.toLowerCase());
+  return currentIndex >= 0 && currentIndex < levels.length - 1 
+    ? levels[currentIndex + 1] 
+    : 'expert';
 }
 
 export async function generateImprovedCode(
@@ -406,7 +494,7 @@ Example: ["Specific resource 1", "Specific resource 2"]`;
       max_tokens: 1000
     };
 
-    const data = await makeAPIRequest(payload);
+    const data = await makeAPIRequest('/chat/completions', payload);
     
     if (!data?.choices?.[0]?.message?.content) {
       throw new Error('Invalid API response format');

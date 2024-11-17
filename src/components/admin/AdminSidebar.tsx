@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { Users, BookOpen, BarChart2, Settings, Shield, LogOut, Brain, FileText } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
-const AdminSidebar = () => {
+export const AdminSidebar: React.FC = () => {
   const { signOut } = useAuth();
   const navigate = useNavigate();
 
@@ -60,5 +60,3 @@ const AdminSidebar = () => {
     </div>
   );
 };
-
-export default AdminSidebar;

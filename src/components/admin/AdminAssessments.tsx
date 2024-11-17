@@ -1,6 +1,6 @@
 import React from 'react';
 
-const AdminAssessments: React.FC = () => {
+export const AdminAssessments: React.FC = () => {
   return (
     <div className="p-6">
       <h2 className="text-2xl font-bold mb-4">Assessment Management</h2>
@@ -10,5 +10,3 @@ const AdminAssessments: React.FC = () => {
     </div>
   );
 };
-
-export default AdminAssessments;

@@ -1,56 +1,133 @@
 import axios, { AxiosError } from 'axios';
 import { saveAssessmentResult } from './firebase.service';
+import { getAuth } from 'firebase/auth';
 
-const BASE_URL = import.meta.env.VITE_GLHF_API_URL || 'https://glhf.chat/api/openai/v1';
+// API Configuration
+const BASE_URL = 'https://glhf.chat/api/openai/v1';
 const GLHF_API_KEY = import.meta.env.VITE_GLHF_API_KEY;
-const MAX_RETRIES = 3;
-const RETRY_DELAY = 1000; // 1 second
+
+// Timeout and retry configuration
+const INITIAL_TIMEOUT = 15000;  // Increased initial timeout to 15 seconds
+const MAX_TIMEOUT = 45000;     // Increased max timeout to 45 seconds
+const MAX_RETRIES = 4;         // Increased max retries
+const RETRY_DELAY = 1000;      // Base delay of 1 second
+
+// API Response types
+interface APIResponse {
+  status: number;
+  data?: any;
+  message: string;
+}
+
+// Create axios instance with default config
+const axiosInstance = axios.create({
+  baseURL: BASE_URL,
+  timeout: INITIAL_TIMEOUT,
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${GLHF_API_KEY}`
+  },
+  validateStatus: (status) => status < 500 // Only treat 500+ as errors
+});
+
+// Utility function for delay with exponential backoff
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Enhanced error handling for API requests
+async function makeAPIRequest(endpoint: string, data: any, retryCount = 0): Promise<APIResponse> {
+  const currentTimeout = Math.min(INITIAL_TIMEOUT * Math.pow(1.5, retryCount), MAX_TIMEOUT);
+  
+  try {
+    console.log(`Attempt ${retryCount + 1}/${MAX_RETRIES + 1}, timeout: ${currentTimeout}ms`);
+    
+    const response = await axiosInstance({
+      method: 'POST',
+      url: endpoint,
+      data,
+      timeout: currentTimeout
+    });
+
+    // Handle rate limiting with automatic retry
+    if (response.status === 429) {
+      if (retryCount < MAX_RETRIES) {
+        const retryAfter = parseInt(response.headers['retry-after']) * 1000 || RETRY_DELAY * Math.pow(2, retryCount);
+        console.log(`Rate limited, retrying after ${retryAfter}ms...`);
+        await delay(retryAfter);
+        return makeAPIRequest(endpoint, data, retryCount + 1);
+      }
+      throw new Error('Rate limit exceeded. Please try again later.');
+    }
+
+    // Handle successful response
+    if (response.status === 200) {
+      return {
+        status: response.status,
+        data: response.data,
+        message: 'Success'
+      };
+    }
+
+    // Handle other client errors
+    throw new Error(response.data?.error?.message || `Request failed with status ${response.status}`);
+
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const axiosError = error as AxiosError;
+      
+      // Handle various error scenarios
+      if (axiosError.code === 'ECONNABORTED' || axiosError.message.includes('timeout')) {
+        if (retryCount < MAX_RETRIES) {
+          console.log(`Request timed out after ${currentTimeout}ms, retrying...`);
+          await delay(RETRY_DELAY * Math.pow(1.5, retryCount));
+          return makeAPIRequest(endpoint, data, retryCount + 1);
+        }
+        throw new Error('Request timed out. The server is taking too long to respond.');
+      }
+
+      if (axiosError.code === 'ERR_NETWORK') {
+        if (retryCount < MAX_RETRIES) {
+          console.log('Network error, retrying...');
+          await delay(RETRY_DELAY * Math.pow(1.5, retryCount));
+          return makeAPIRequest(endpoint, data, retryCount + 1);
+        }
+        throw new Error('Network error. Please check your internet connection.');
+      }
+
+      // Handle specific HTTP errors
+      if (axiosError.response) {
+        const status = axiosError.response.status;
+        switch (status) {
+          case 401:
+            throw new Error('Authentication failed. Please check your API key.');
+          case 403:
+            throw new Error('Access denied. Please check your permissions.');
+          case 400:
+            throw new Error('Invalid request. Please check your input parameters.');
+          case 404:
+            throw new Error('API endpoint not found. Please check the service URL.');
+          case 500:
+          case 502:
+          case 503:
+          case 504:
+            if (retryCount < MAX_RETRIES) {
+              console.log(`Server error (${status}), retrying...`);
+              await delay(RETRY_DELAY * Math.pow(2, retryCount));
+              return makeAPIRequest(endpoint, data, retryCount + 1);
+            }
+            throw new Error('Server error. Please try again later.');
+          default:
+            throw new Error(`Request failed with status ${status}`);
+        }
+      }
+    }
+    
+    throw new Error('An unexpected error occurred. Please try again.');
+  }
+}
 
 // Validate required environment variables
 if (!GLHF_API_KEY) {
   throw new Error('VITE_GLHF_API_KEY is not set in environment variables');
-}
-
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-async function makeAPIRequest(payload: any, retryCount = 0): Promise<any> {
-  try {
-    const response = await axios.post(
-      `${BASE_URL}/chat/completions`,
-      payload,
-      {
-        headers: {
-          'Authorization': `Bearer ${GLHF_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 30000 // 30 second timeout
-      }
-    );
-    return response.data;
-  } catch (error) {
-    if (axios.isAxiosError(error)) {
-      const axiosError = error as AxiosError;
-      console.error('API request failed:', {
-        status: axiosError.response?.status,
-        data: axiosError.response?.data,
-        message: axiosError.message
-      });
-
-      // Check if we should retry
-      if (retryCount < MAX_RETRIES && (
-        axiosError.message.includes('INTERNAL_ERROR') ||
-        axiosError.message.includes('stream error') ||
-        axiosError.code === 'ECONNABORTED' ||
-        axiosError.response?.status === 500 ||
-        axiosError.response?.status === 503
-      )) {
-        console.log(`Retrying request (${retryCount + 1}/${MAX_RETRIES})...`);
-        await delay(RETRY_DELAY * (retryCount + 1)); // Exponential backoff
-        return makeAPIRequest(payload, retryCount + 1);
-      }
-    }
-    throw error;
-  }
 }
 
 export interface Question {
@@ -92,56 +169,51 @@ Return ONLY a JSON object with these exact fields:
         {
           role: "system",
           content: systemPrompt
-        },
-        {
-          role: "user",
-          content: "Generate a coding question that matches these criteria."
         }
       ],
       temperature: 0.7,
-      max_tokens: 1000
+      max_tokens: 800,
+      presence_penalty: 0.1,
+      frequency_penalty: 0.1
     };
 
-    const data = await makeAPIRequest(payload);
+    const response = await makeAPIRequest('/chat/completions', payload);
     
-    if (!data?.choices?.[0]?.message?.content) {
-      throw new Error('Invalid API response format');
+    if (!response?.data?.choices?.[0]?.message?.content) {
+      throw new Error('Invalid response format from AI service');
     }
 
-    const content = data.choices[0].message.content.trim();
-    console.log('Raw content:', content);
+    const content = response.data.choices[0].message.content.trim();
+    let parsedQuestion: Question;
 
     try {
-      const parsedQuestion = JSON.parse(content);
-      console.log('Parsed question:', parsedQuestion);
-
-      // Validate required fields
-      const requiredFields = ['question', 'expectedOutput', 'difficulty', 'category'];
-      for (const field of requiredFields) {
-        if (!parsedQuestion[field]) {
-          throw new Error(`Missing required field: ${field}`);
-        }
-      }
-
-      // Ensure hints is an array
-      if (!Array.isArray(parsedQuestion.hints)) {
-        parsedQuestion.hints = [];
-      }
-
-      // Add unique ID
-      parsedQuestion.id = Date.now().toString();
-
-      return parsedQuestion as Question;
+      parsedQuestion = JSON.parse(content);
     } catch (parseError) {
-      console.error('Error parsing question JSON:', parseError);
-      throw new Error('Failed to parse AI response as valid question format');
+      console.error('Failed to parse AI response:', content);
+      throw new Error('Failed to parse question format from AI service');
     }
-  } catch (error: any) {
+
+    // Validate required fields
+    const requiredFields = ['question', 'expectedOutput', 'difficulty', 'category'];
+    for (const field of requiredFields) {
+      if (!parsedQuestion[field]) {
+        throw new Error(`Missing required field in AI response: ${field}`);
+      }
+    }
+
+    // Clean and validate the question data
+    return {
+      id: Date.now().toString(),
+      question: parsedQuestion.question.trim(),
+      expectedOutput: parsedQuestion.expectedOutput.trim(),
+      difficulty: parsedQuestion.difficulty.toLowerCase(),
+      category: parsedQuestion.category.trim(),
+      hints: Array.isArray(parsedQuestion.hints) ? parsedQuestion.hints.map(h => h.trim()) : []
+    };
+
+  } catch (error) {
     console.error('Question generation error:', error);
-    if (error.message.includes('INTERNAL_ERROR') || error.message.includes('stream error')) {
-      throw new Error('The AI service is temporarily unavailable. Please try again in a few moments.');
-    }
-    throw error;
+    throw error instanceof Error ? error : new Error('Failed to generate question');
   }
 }
 
@@ -181,13 +253,13 @@ Return ONLY a JSON object with these exact fields:
       max_tokens: 1000
     };
 
-    const data = await makeAPIRequest(payload);
+    const data = await makeAPIRequest('/chat/completions', payload);
     
-    if (!data?.choices?.[0]?.message?.content) {
+    if (!data?.data?.choices?.[0]?.message?.content) {
       throw new Error('Invalid API response format');
     }
 
-    const content = data.choices[0].message.content.trim();
+    const content = data.data.choices[0].message.content.trim();
     return JSON.parse(content);
   } catch (error: any) {
     console.error('Answer checking error:', error);

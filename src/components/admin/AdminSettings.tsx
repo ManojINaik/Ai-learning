@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Save, AlertCircle, CheckCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
-const AdminSettings = () => {
+export const AdminSettings: React.FC = () => {
   const { user } = useAuth();
   const [settings, setSettings] = useState({
     emailNotifications: true,
@@ -173,5 +173,3 @@ const AdminSettings = () => {
     </div>
   );
 };
-
-export default AdminSettings;

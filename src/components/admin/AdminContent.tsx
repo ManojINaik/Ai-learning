@@ -23,7 +23,7 @@ const initialFormData: ResourceFormData = {
   tags: []
 };
 
-const AdminContent = () => {
+export const AdminContent: React.FC = () => {
   const [resources, setResources] = useState<Resource[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -328,5 +328,3 @@ const AdminContent = () => {
     </div>
   );
 };
-
-export default AdminContent;

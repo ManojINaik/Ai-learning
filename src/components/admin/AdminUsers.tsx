@@ -3,7 +3,7 @@ import { User, Trash2, Edit, Search, Shield } from 'lucide-react';
 import { getAllUsers, updateUserRole, deleteUser, grantAdminPrivileges } from '../../services/admin.service';
 import type { AdminUser } from '../../services/admin.service';
 
-const AdminUsers = () => {
+export const AdminUsers: React.FC = () => {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -177,5 +177,3 @@ const AdminUsers = () => {
     </div>
   );
 };
-
-export default AdminUsers;

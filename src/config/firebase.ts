@@ -25,7 +25,7 @@ const initializeFirebase = () => {
   }
 };
 
-const app = initializeFirebase();
+export const app = initializeFirebase();
 
 // Initialize services with error handling
 export const auth = getAuth(app);

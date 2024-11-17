@@ -3,7 +3,7 @@ import { Users, BookOpen, Award, TrendingUp } from 'lucide-react';
 import { getAnalytics } from '../../services/admin.service';
 import type { Analytics } from '../../services/admin.service';
 
-const AdminAnalytics = () => {
+export const AdminAnalytics: React.FC = () => {
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -82,5 +82,3 @@ const AdminAnalytics = () => {
     </div>
   );
 };
-
-export default AdminAnalytics;

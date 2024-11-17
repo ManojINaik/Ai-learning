@@ -9,7 +9,7 @@ interface Domain {
   description: string;
 }
 
-const AssessmentManagement = () => {
+export const AssessmentManagement: React.FC = () => {
   const [domains, setDomains] = useState<Domain[]>([]);
   const [newDomain, setNewDomain] = useState({ name: '', description: '' });
   const [editingDomain, setEditingDomain] = useState<Domain | null>(null);
@@ -177,5 +177,3 @@ const AssessmentManagement = () => {
     </div>
   );
 };
-
-export default AssessmentManagement;

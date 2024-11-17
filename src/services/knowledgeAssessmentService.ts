@@ -11,6 +11,7 @@ export interface Question {
   text: string;
   options: string[];
   correctAnswer: string;
+  explanation: string;
 }
 
 export interface AssessmentResult {
@@ -23,122 +24,161 @@ export interface AssessmentResult {
   weaknesses: string[];
 }
 
+// API response types
+interface AICompletionResponse {
+  choices?: Array<{
+    text?: string;
+    message?: {
+      content: string;
+    };
+  }>;
+  generated_text?: string;
+}
+
+// API error types
+interface APIError extends Error {
+  status?: number;
+  code?: string;
+}
+
+// Retry configuration
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 1000; // 1 second
+
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 const generateSystemPrompt = (domain: string): string => {
-  return `Generate 5 multiple-choice questions to test knowledge in ${domain}.
-Each question must:
-1. Be relevant to ${domain}
-2. Have exactly 4 options labeled as A, B, C, D
-3. Include one correct answer
-4. Be challenging but fair
+  return `You are an expert assessment generator for ${domain}. Generate 5 high-quality multiple-choice questions that test understanding of key concepts in ${domain}.
 
-Respond with a JSON array of questions in this exact format:
-[
-  {
-    "text": "Question text here?",
-    "options": ["A) First option", "B) Second option", "C) Third option", "D) Fourth option"],
-    "correctAnswer": "A"
-  }
-]
+Requirements for each question:
+1. Test conceptual understanding rather than just factual recall
+2. Include 4 options labeled as A), B), C), D)
+3. Have exactly one correct answer
+4. Ensure distractors (wrong options) are plausible but clearly incorrect
+5. Cover different aspects or subtopics within ${domain}
+6. Use clear, unambiguous language
 
-Important:
-- Use plain JSON without any markdown formatting or backticks
-- Ensure all strings are in double quotes
-- Each question must follow the exact format above.`;
+Format each question as a JSON object with:
+- "text": Clear question statement
+- "options": Array of 4 options starting with A), B), C), D)
+- "correctAnswer": Single letter A/B/C/D
+- "explanation": Brief explanation of the correct answer
+
+Return an array of 5 such questions in valid JSON format.`;
 };
 
 export const generateQuestions = async (domain: string): Promise<Question[]> => {
-  try {
-    const response = await fetch("https://glhf.chat/api/openai/v1/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${import.meta.env.VITE_GLHF_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "hf:xingyaoww/Qwen2.5-Coder-32B-Instruct-AWQ-128k",
-        prompt: generateSystemPrompt(domain),
-        temperature: 0.7,
-        max_tokens: 2000,
-        stream: false,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ message: "Unknown error" }));
-      console.error("API Error:", errorData);
-      throw new Error(errorData.message || `API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    console.log("Raw API Response:", data);
-    
-    const aiResponse = data.choices?.[0]?.text || data.generated_text || data[0]?.generated_text;
-    console.log("AI Response before cleaning:", aiResponse);
-
-    if (!aiResponse) {
-      throw new Error("No response content from AI");
-    }
-
-    // Extract the JSON array from the response
-    const jsonMatch = aiResponse.match(/\[\s*\{[\s\S]*\}\s*\]/);
-    if (!jsonMatch) {
-      throw new Error("Could not find valid JSON array in response");
-    }
-
-    const cleanedResponse = jsonMatch[0]
-      .replace(/\\n/g, "") // Remove escaped newlines
-      .replace(/\\"/g, '"') // Fix escaped quotes
-      .trim();
-
-    console.log("Cleaned Response:", cleanedResponse);
-
+  let retries = 0;
+  
+  while (retries < MAX_RETRIES) {
     try {
-      const parsedQuestions: any[] = JSON.parse(cleanedResponse);
-      console.log("Parsed Questions:", parsedQuestions);
+      const response = await fetch("https://glhf.chat/api/openai/v1/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_GLHF_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "hf:xingyaoww/Qwen2.5-Coder-32B-Instruct-AWQ-128k",
+          prompt: generateSystemPrompt(domain),
+          temperature: 0.7,
+          max_tokens: 2000,
+          stream: false,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: "Unknown error" }));
+        throw Object.assign(new Error(errorData.message || `API error: ${response.status}`), {
+          status: response.status,
+          code: errorData.code,
+        });
+      }
+
+      const data: AICompletionResponse = await response.json();
+      
+      // Extract content from various possible response formats
+      const aiResponse = data.choices?.[0]?.text || 
+                        data.choices?.[0]?.message?.content ||
+                        data.generated_text;
+
+      if (!aiResponse) {
+        throw new Error("No response content from AI");
+      }
+
+      // Extract JSON array from response
+      const jsonMatch = aiResponse.match(/\[\s*\{[\s\S]*\}\s*\]/);
+      if (!jsonMatch) {
+        throw new Error("Could not find valid JSON array in response");
+      }
+
+      const cleanedResponse = jsonMatch[0]
+        .replace(/\\n/g, "")
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, '\\')
+        .trim();
+
+      const parsedQuestions = JSON.parse(cleanedResponse);
 
       if (!Array.isArray(parsedQuestions)) {
         throw new Error("Parsed AI response is not an array");
       }
 
+      // Validate and transform questions
       return parsedQuestions.map((q, index) => {
-        // Validate and clean options format
-        const cleanOptions = q.options.map(opt => {
-          if (!opt.startsWith('A)') && !opt.startsWith('B)') && 
-              !opt.startsWith('C)') && !opt.startsWith('D)')) {
-            throw new Error(`Invalid option format at question ${index + 1}. Options must start with A), B), C), or D)`);
+        // Validate question structure
+        if (!q || typeof q !== 'object') {
+          throw new Error(`Invalid question object at index ${index}`);
+        }
+
+        // Validate required fields
+        if (!q.text || !q.options || !q.correctAnswer) {
+          throw new Error(`Missing required fields in question ${index + 1}`);
+        }
+
+        // Validate options
+        if (!Array.isArray(q.options) || q.options.length !== 4) {
+          throw new Error(`Question ${index + 1} must have exactly 4 options`);
+        }
+
+        // Clean and validate options format
+        const cleanOptions = q.options.map((opt: string, optIndex: number) => {
+          const option = opt.trim();
+          const prefix = String.fromCharCode(65 + optIndex) + ')';
+          if (!option.startsWith(prefix)) {
+            return `${prefix} ${option}`;
           }
-          return opt.trim();
+          return option;
         });
 
-        if (
-          typeof q.text === "string" &&
-          Array.isArray(q.options) &&
-          q.options.length === 4 &&
-          typeof q.correctAnswer === "string" &&
-          ["A", "B", "C", "D"].includes(q.correctAnswer)
-        ) {
-          return {
-            id: `q${index + 1}`,
-            text: q.text.trim(),
-            options: cleanOptions,
-            correctAnswer: q.correctAnswer,
-          };
-        } else {
-          console.error("Invalid question format:", q);
-          throw new Error(
-            `Invalid question format at index ${index}. Expected text, 4 options, and correctAnswer A/B/C/D`
-          );
+        // Validate correct answer
+        if (!['A', 'B', 'C', 'D'].includes(q.correctAnswer)) {
+          throw new Error(`Invalid correct answer "${q.correctAnswer}" for question ${index + 1}`);
         }
+
+        return {
+          id: `q${index + 1}`,
+          text: q.text.trim(),
+          options: cleanOptions,
+          correctAnswer: q.correctAnswer,
+          explanation: q.explanation || '',
+        };
       });
-    } catch (parseError) {
-      console.error("JSON Parse Error:", parseError);
-      console.error("Failed to parse response:", cleanedResponse);
-      throw new Error(`Failed to parse AI response: ${parseError.message}`);
+
+    } catch (error) {
+      console.error(`Attempt ${retries + 1} failed:, error`);
+      
+      if (retries === MAX_RETRIES - 1) {
+        throw error instanceof Error ? error : new Error(String(error));
+      }
+
+      // Exponential backoff
+      await delay(RETRY_DELAY * Math.pow(2, retries));
+      retries++;
     }
-  } catch (error) {
-    console.error("Error generating questions:", error);
-    throw error;
   }
+
+  throw new Error("Max retries exceeded");
 };
 
 export const evaluateAnswers = (
